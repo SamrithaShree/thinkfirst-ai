@@ -5,7 +5,7 @@ const genAI = new GoogleGenerativeAI("AIzaSyAKEZJ8ankv_8u2F7_jj7-1_yaixOnsbXE");
 
 async function run() {
   // Use a model name from your successful list
-  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
   const prompt = "Write a short poem about a programmer solving a 404 error.";
 
