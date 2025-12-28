@@ -87,6 +87,24 @@ function analyzeContext(
 ): ConversationContext {
   const msgLower = message.toLowerCase().trim();
   
+  // ============ PRIORITY CHECK: REAL-TIME DATA REQUESTS ============
+  // CHANGE 1: Check for real-time data requests FIRST (before learning mode)
+  const weatherPatterns = ["weather", "temperature", "how hot", "how cold", "climate", "forecast"];
+  const newsPatterns = ["news", "today's news", "latest news", "current events", "headlines", "what's happening", "news update"];
+  
+  const isWeatherRequest = weatherPatterns.some(p => msgLower.includes(p));
+  const isNewsRequest = newsPatterns.some(p => msgLower.includes(p));
+  
+  if (isWeatherRequest || isNewsRequest) {
+    console.log('🌐 Real-time data request detected - staying in chat mode');
+    return { 
+      currentTopic: null, 
+      attemptCount: 0, 
+      isLearningMode: false  // Force chat mode for real-time requests
+    };
+  }
+  // ============ END PRIORITY CHECK ============
+  
   // Phrases that indicate user wants solution directly (NOT an attempt)
   const solutionRequestPhrases = [
     "give me the answer",

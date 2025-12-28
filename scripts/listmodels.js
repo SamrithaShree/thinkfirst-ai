@@ -1,7 +1,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 // Replace with your actual API key
-const API_KEY = "AIzaSyDYdW96I83ZrivP_IRiWG3C8FNgwrTTnIg";
+const API_KEY = "AIzaSyCMMs0eLb3zKsnzyuiwVqmBNF1oS74yfmQ";
 
 async function listModels() {
   try {
