@@ -1,7 +1,7 @@
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
 import { GoogleGenAI, Type } from "@google/genai";
-import axios from "axios"; 
+import axios from "axios";
 
 admin.initializeApp();
 
@@ -26,9 +26,13 @@ const getApiKey = (): string => {
 async function fetchWeather(city: string, country: string = "IN"): Promise<any> {
   try {
     const apiKey = process.env.OPENWEATHER_API_KEY || functions.config().weather?.api_key;
-    if (!apiKey) return { error: "Weather API not configured" };
+    if (!apiKey) {
+      console.warn('⚠️ Weather API key not configured');
+      return { error: "Weather API not configured" };
+    }
     
     const url = `https://api.openweathermap.org/data/2.5/weather?q=${city},${country}&appid=${apiKey}&units=metric`;
+    console.log('🌤️ Fetching weather for:', city);
     const response = await axios.get(url);
     
     return {
@@ -39,6 +43,7 @@ async function fetchWeather(city: string, country: string = "IN"): Promise<any> 
       city: response.data.name,
     };
   } catch (error) {
+    console.error('Weather API error:', error);
     return { error: "Unable to fetch weather data" };
   }
 }
@@ -46,9 +51,13 @@ async function fetchWeather(city: string, country: string = "IN"): Promise<any> 
 async function fetchNews(query: string): Promise<any> {
   try {
     const apiKey = process.env.NEWS_API_KEY || functions.config().news?.api_key;
-    if (!apiKey) return { error: "News API not configured" };
+    if (!apiKey) {
+      console.warn('⚠️ News API key not configured');
+      return { error: "News API not configured" };
+    }
     
     const url = `https://newsapi.org/v2/top-headlines?q=${query}&apiKey=${apiKey}`;
+    console.log('📰 Fetching news for:', query);
     const response = await axios.get(url);
     
     const headlines = response.data.articles.slice(0, 3).map((article: any) => ({
@@ -58,6 +67,7 @@ async function fetchNews(query: string): Promise<any> {
     
     return { headlines };
   } catch (error) {
+    console.error('News API error:', error);
     return { error: "Unable to fetch news data" };
   }
 }
@@ -75,53 +85,158 @@ function analyzeContext(
   conversationHistory: any[],
   previousContext?: ConversationContext
 ): ConversationContext {
-  const msgLower = message.toLowerCase();
+  const msgLower = message.toLowerCase().trim();
   
-  // Learning keywords indicate new problem/question
-  const learningKeywords = ["how", "explain", "solve", "algorithm", "what is", "calculate", "find", "implement", "why does", "can you show"];
-  const isNewLearningQuestion = learningKeywords.some(kw => msgLower.includes(kw)) && msgLower.length > 10;
+  // Phrases that indicate user wants solution directly (NOT an attempt)
+  const solutionRequestPhrases = [
+    "give me the answer",
+    "give the answer",
+    "just give me",
+    "give me solution",
+    "give the solution",
+    "show me the answer",
+    "show the solution",
+    "what is the solution",
+    "what's the solution",
+    "tell me the solution",
+    "just show me",
+    "just tell me"
+  ];
+  const isAskingForSolution = solutionRequestPhrases.some(phrase => msgLower.includes(phrase));
   
-  // Follow-up keywords indicate related question (not a new attempt)
-  const followUpKeywords = ["complexity", "what about", "also", "additionally", "can you explain more", "why", "time complexity", "space complexity"];
+  // Phrases indicating genuine attempt/confusion (should increment)
+  const attemptPhrases = [
+    "i tried",
+    "i think",
+    "maybe",
+    "is it",
+    "would it be",
+    "should i",
+    "idk",
+    "i don't know",
+    "not sure",
+    "i'm stuck",
+    "can't figure"
+  ];
+  const isGenuineAttempt = attemptPhrases.some(phrase => msgLower.includes(phrase));
+  
+  // Phrases indicating returning to previous topic
+  const backToPreviousPhrases = [
+    "back to",
+    "return to",
+    "again about",
+    "still don't get"
+  ];
+  const isReturningToPrevious = backToPreviousPhrases.some(phrase => msgLower.includes(phrase));
+  
+  // Learning keywords indicate NEW question
+  const learningKeywords = [
+    "how do i",
+    "how to",
+    "how about",
+    "what about",
+    "explain",
+    "solve",
+    "algorithm for",
+    "solution for",
+    "implement"
+  ];
+  const isNewLearningQuestion = learningKeywords.some(kw => msgLower.includes(kw));
+  
+  // Follow-up keywords indicate question about SAME topic (not attempt)
+  const followUpKeywords = [
+    "time complexity",
+    "space complexity",
+    "complexity",
+    "why does this",
+    "why is",
+    "can you explain more",
+    "what do you mean",
+    "how does that",
+    "give me a hint",
+    "give hint",
+    "another hint"
+  ];
   const isFollowUp = followUpKeywords.some(kw => msgLower.includes(kw));
   
   // General chat patterns
-  const chatKeywords = ["hello", "hi", "thanks", "thank you", "okay", "ok", "got it"];
-  const isGeneralChat = chatKeywords.some(kw => msgLower === kw || msgLower.startsWith(kw + " "));
+  const chatKeywords = ["hello", "hi", "hey", "thanks", "thank you", "okay", "ok", "got it", "cool"];
+  const isGeneralChat = chatKeywords.some(kw => msgLower === kw || msgLower.startsWith(kw + " ") || msgLower.startsWith(kw + "!"));
   
   // Extract topic from message
   const extractTopic = (msg: string): string => {
     const words = msg.toLowerCase().split(" ");
-    const stopWords = ["how", "to", "the", "a", "an", "what", "is", "explain", "can", "you", "i", "do"];
+    const stopWords = ["how", "to", "the", "a", "an", "what", "is", "explain", "can", "you", "i", "do", "about", "for"];
     const meaningful = words.filter(w => !stopWords.includes(w) && w.length > 3);
     return meaningful.slice(0, 3).join(" ");
   };
   
-  // Decision logic
-  if (isGeneralChat) {
+  // DECISION LOGIC
+  
+  // 1. General chat - reset everything
+  if (isGeneralChat && !isNewLearningQuestion) {
+    console.log('💬 Detected: General chat');
     return { currentTopic: null, attemptCount: 0, isLearningMode: false };
   }
   
-  if (isNewLearningQuestion && !isFollowUp) {
-    // New learning question - reset topic and attempts
+  // 2. New learning question - reset topic and attempts
+  if (isNewLearningQuestion && !isReturningToPrevious) {
+    const newTopic = extractTopic(message);
+    console.log('📚 Detected: New learning question -', newTopic);
     return {
-      currentTopic: extractTopic(message),
+      currentTopic: newTopic,
       attemptCount: 0,
       isLearningMode: true,
     };
   }
   
+  // 3. Returning to previous topic mentioned in history
+  if (isReturningToPrevious && conversationHistory.length > 0) {
+    // Try to find the previous topic from history
+    const previousTopics = conversationHistory
+      .filter((msg: any) => msg.role === 'user')
+      .map((msg: any) => extractTopic(msg.text))
+      .filter((topic: string) => topic.length > 0);
+    
+    if (previousTopics.length > 0) {
+      // Get the most relevant previous topic
+      const relevantTopic = previousTopics.find((topic: string) => 
+        msgLower.includes(topic.split(' ')[0])
+      ) || previousTopics[previousTopics.length - 2]; // Second to last topic
+      
+      console.log('🔄 Detected: Returning to previous topic -', relevantTopic);
+      return {
+        currentTopic: relevantTopic,
+        attemptCount: 0, // Reset attempts when returning
+        isLearningMode: true,
+      };
+    }
+  }
+  
+  // 4. Follow-up question or hint request - SAME topic, SAME attempt count
   if (isFollowUp && previousContext?.currentTopic) {
-    // Follow-up question - keep same topic and attempt count
+    console.log('❓ Detected: Follow-up question (no increment)');
     return {
       currentTopic: previousContext.currentTopic,
-      attemptCount: previousContext.attemptCount,
+      attemptCount: previousContext.attemptCount, // Don't increment
       isLearningMode: true,
     };
   }
   
-  if (previousContext?.isLearningMode && previousContext?.currentTopic && !isFollowUp) {
-    // User is attempting to solve - increment attempt
+  // 5. Asking for solution directly - increment ONLY once, then give solution
+  if (isAskingForSolution && previousContext?.isLearningMode) {
+    console.log('🎯 Detected: Direct solution request');
+    // Set attempt to 3 to trigger full solution
+    return {
+      currentTopic: previousContext.currentTopic,
+      attemptCount: Math.max(previousContext.attemptCount, 3), // Jump to solution
+      isLearningMode: true,
+    };
+  }
+  
+  // 6. Genuine attempt at solving - increment attempts
+  if (isGenuineAttempt && previousContext?.isLearningMode && previousContext?.currentTopic) {
+    console.log('✍️ Detected: Genuine attempt (increment)');
     return {
       currentTopic: previousContext.currentTopic,
       attemptCount: previousContext.attemptCount + 1,
@@ -129,7 +244,22 @@ function analyzeContext(
     };
   }
   
-  // Default: maintain or start fresh
+  // 7. User providing a substantive answer (longer than 10 chars, in learning mode)
+  if (previousContext?.isLearningMode && 
+      previousContext?.currentTopic && 
+      !isFollowUp && 
+      !isAskingForSolution &&
+      message.length > 10) {
+    console.log('📝 Detected: Substantive response (increment)');
+    return {
+      currentTopic: previousContext.currentTopic,
+      attemptCount: previousContext.attemptCount + 1,
+      isLearningMode: true,
+    };
+  }
+  
+  // 8. Default: maintain context
+  console.log('🔄 Maintaining previous context');
   return previousContext || { currentTopic: null, attemptCount: 0, isLearningMode: false };
 }
 
@@ -167,31 +297,72 @@ export const chat = functions.https.onRequest(async (req, res) => {
     // Analyze conversation context
     const currentContext = analyzeContext(message, conversationHistory, conversationContext);
     
-    console.log('📊 Context:', currentContext);
+    console.log('📊 Context Analysis:', {
+      message: message.substring(0, 50),
+      currentTopic: currentContext.currentTopic,
+      attemptCount: currentContext.attemptCount,
+      isLearningMode: currentContext.isLearningMode
+    });
     
     const ai = new GoogleGenAI({ apiKey: getApiKey() });
     
-    // Check for real-time data needs
+    // ==================== ENHANCED REAL-TIME DATA DETECTION ====================
     let realTimeData = "";
     const msgLower = message.toLowerCase();
     
-    if (msgLower.includes("weather") || msgLower.includes("temperature")) {
-      // Extract city from message (simple extraction)
-      const cityMatch = message.match(/in\s+([A-Za-z]+)/i) || message.match(/weather\s+([A-Za-z]+)/i);
-      const city = cityMatch ? cityMatch[1] : "Delhi";
+    // Weather detection (more patterns)
+    const weatherPatterns = ["weather", "temperature", "how hot", "how cold", "climate", "forecast"];
+    if (weatherPatterns.some(pattern => msgLower.includes(pattern))) {
+      console.log('🌤️ Weather request detected');
+      
+      // Extract city from message (improved)
+      let city = "Delhi"; // default
+      const cityMatch = message.match(/in\s+([A-Za-z]+)/i) || 
+                        message.match(/at\s+([A-Za-z]+)/i) ||
+                        message.match(/weather\s+([A-Za-z]+)/i) ||
+                        message.match(/([A-Z][a-z]+)\s+weather/i);
+      
+      if (cityMatch) {
+        city = cityMatch[1];
+      }
+      
       const weatherData = await fetchWeather(city);
+      console.log('🌤️ Weather data:', weatherData);
       
       if (!weatherData.error) {
-        realTimeData = `\n\n[REAL-TIME DATA] Current weather in ${weatherData.city}: ${weatherData.temperature}°C, ${weatherData.condition}, humidity ${weatherData.humidity}%. Use this data in your response.`;
+        realTimeData = `\n\n[REAL-TIME WEATHER DATA - USE THIS IN YOUR RESPONSE]
+Current weather in ${weatherData.city}: 
+- Temperature: ${weatherData.temperature}°C (feels like ${weatherData.feelsLike}°C)
+- Condition: ${weatherData.condition}
+- Humidity: ${weatherData.humidity}%
+
+Respond naturally using this information. Don't say you don't have access to real-time data!`;
+      } else {
+        console.error('Weather API failed:', weatherData.error);
       }
     }
     
-    if (msgLower.includes("news") || msgLower.includes("latest")) {
-      const query = message.replace(/news|latest|about/gi, "").trim() || "technology";
-      const newsData = await fetchNews(query);
+    // News detection (more patterns)
+    const newsPatterns = ["news", "latest", "current events", "happening", "today's", "recent"];
+    if (newsPatterns.some(pattern => msgLower.includes(pattern)) && !msgLower.includes("weather")) {
+      console.log('📰 News request detected');
       
-      if (!newsData.error && newsData.headlines) {
-        realTimeData = `\n\n[REAL-TIME DATA] Latest news: ${newsData.headlines.map((h: any) => h.title).join("; ")}. Use this data in your response.`;
+      const query = message.replace(/news|latest|about|what's|today's|recent/gi, "").trim() || "technology";
+      const newsData = await fetchNews(query);
+      console.log('📰 News data:', newsData);
+      
+      if (!newsData.error && newsData.headlines && newsData.headlines.length > 0) {
+        const headlinesList = newsData.headlines
+          .map((h: any, i: number) => `${i + 1}. ${h.title}`)
+          .join('\n');
+        
+        realTimeData = `\n\n[REAL-TIME NEWS DATA - USE THIS IN YOUR RESPONSE]
+Latest news headlines:
+${headlinesList}
+
+Respond naturally using these headlines. Don't say you don't have access to real-time data!`;
+      } else {
+        console.error('News API failed:', newsData.error);
       }
     }
     
@@ -202,7 +373,7 @@ export const chat = functions.https.onRequest(async (req, res) => {
 1. **RESPOND DIRECTLY** - Give your answer immediately without explaining your thought process
 2. **NO META-COMMENTARY** - Don't say things like "Here's how to proceed"
 3. **BE NATURAL** - Talk like a friendly tutor, not a robot
-4. **USE REAL-TIME DATA** - When real-time data is provided, use it naturally in your response
+4. **USE REAL-TIME DATA** - When real-time data is provided in [REAL-TIME DATA] sections, YOU MUST use it naturally in your response. NEVER say "I don't have access to real-time data" when data is provided.
 
 **BEHAVIOR:**
 
@@ -225,29 +396,29 @@ Attempt: ${attemptCount}
       if (attemptCount === 0) {
         systemPrompt += `- This is the FIRST interaction with this topic
 - Give a conceptual hint that makes them think
-- Ask guiding questions
-- Set isHint: true, isSolution: false`;
+- Ask guiding questions to assess their understanding
+- Set isHint: true, isSolution: false, mode: "learning"`;
       } else if (attemptCount === 1) {
         systemPrompt += `- This is attempt ${attemptCount} (SECOND attempt)
 - Provide stronger hints with techniques or approaches
 - Point toward relevant concepts/algorithms
-- Set isHint: true, isSolution: false`;
+- Set isHint: true, isSolution: false, mode: "learning"`;
       } else if (attemptCount === 2) {
         systemPrompt += `- This is attempt ${attemptCount} (THIRD attempt)
 - Give pseudocode or step-by-step roadmap
 - Be explicit about the approach
-- Set isHint: true, isSolution: false`;
+- Set isHint: true, isSolution: false, mode: "learning"`;
       } else {
-        systemPrompt += `- This is attempt ${attemptCount} (FOURTH+ attempt)
+        systemPrompt += `- This is attempt ${attemptCount} (FOURTH+ attempt or direct solution request)
 - Provide COMPLETE solution with detailed explanation
-- Include code examples if relevant
+- Include code examples with proper syntax
 - Explain WHY each step works
-- Set isHint: false, isSolution: true`;
+- Set isHint: false, isSolution: true, mode: "learning"`;
       }
       
       systemPrompt += `
 
-**IMPORTANT:** If user asks a follow-up question about the SAME topic (like "what about complexity?" or "why?"), answer directly without treating it as a new attempt.`;
+**IMPORTANT:** If user asks a follow-up question about complexity or clarification, answer directly without treating it as a new attempt.`;
     }
     
     // Build conversation history
@@ -258,6 +429,8 @@ Attempt: ${attemptCount}
     const prompt = historyString
       ? `${historyString}\n\nUser: ${message}${realTimeData}`
       : `User: ${message}${realTimeData}`;
+    
+    console.log('📝 Has real-time data:', realTimeData.length > 0);
     
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
@@ -283,7 +456,7 @@ Attempt: ${attemptCount}
     // Return response with updated context
     res.status(200).json({
       ...result,
-      conversationContext: currentContext, // Send context back to frontend
+      conversationContext: currentContext,
     });
     
   } catch (error: any) {
