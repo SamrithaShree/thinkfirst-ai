@@ -17,6 +17,7 @@ import {
   trackModeSwitched,
 } from "../lib/analytics";
 import axios from 'axios';
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
 
 // ==================== TYPES ====================
 
@@ -664,61 +665,57 @@ This ensures valid JSON while preserving code formatting.`;
 
 
 
-      // ==================== CALL GROQ API ====================
-      
+    // ==================== CALL FASTAPI BACKEND ====================
+
       try {
-        const groqApiKey = import.meta.env.VITE_GROQ_API_KEY;
+        const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
         
-        if (!groqApiKey) {
-          throw new Error('VITE_GROQ_API_KEY is not configured');
+        if (!BACKEND_URL) {
+          throw new Error('VITE_BACKEND_URL is not configured');
         }
 
-        console.log('🚀 Calling Groq API...');
+        // Get Firebase Auth token
+        const idToken = await auth.currentUser!.getIdToken();
 
-        const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${groqApiKey}`,
+        console.log('🚀 Calling FastAPI Backend...');
+
+        // Build conversation history for backend
+        const conversationHistory = messages.map(m => ({
+          role: m.role,
+          text: m.text
+        }));
+
+        const backendResponse = await axios.post(
+          `${BACKEND_URL}/api/chat`,
+          {
+            message: text + realTimeData, // Include real-time data
+            conversationHistory,
+            conversationContext: currentContext,
+            sessionId
           },
-          body: JSON.stringify({
-            model: 'llama-3.3-70b-versatile',
-            messages: [
-              {
-                role: 'system',
-                content: systemPrompt
-              },
-              ...messages.map(m => ({
-                role: m.role === 'user' ? 'user' : 'assistant',
-                content: m.text
-              })),
-              { 
-                role: 'user', 
-                content: text + realTimeData + '\n\n[Respond in JSON format with fields: text, mode, isHint, isSolution]'
-              }
-            ],
-            temperature: 0.7,
-            max_tokens: 2000,
-            response_format: { type: 'json_object' }
-          })
-        });
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${idToken}`
+            }
+          }
+        );
 
-        if (!groqResponse.ok) {
-          const errorText = await groqResponse.text();
-          console.error('Groq API error:', errorText);
-          throw new Error(`Groq API error: ${groqResponse.status}`);
-        }
+        console.log('✅ FastAPI raw response:', backendResponse.data);
 
-        const groqData = await groqResponse.json();
-        console.log('✅ Groq raw response:', groqData);
-
-        // Parse AI response
+        // Parse AI response (FastAPI returns structured response)
         let aiResponse: GroqResponse;
         try {
-          aiResponse = JSON.parse(groqData.choices[0].message.content);
+          aiResponse = {
+            text: backendResponse.data.text,
+            mode: backendResponse.data.mode,
+            isHint: backendResponse.data.isHint,
+            isSolution: backendResponse.data.isSolution
+          };
+          
           console.log('🎯 Parsed AI response:', aiResponse);
           
-          // Safety check
+          // Safety check (keep your existing safety logic)
           if (currentContext.isLearningMode && currentContext.attemptCount < 4) {
             if (aiResponse.isSolution === true) {
               console.warn('⚠️ AI tried to give solution too early! Forcing hint mode.');
@@ -729,9 +726,10 @@ This ensures valid JSON while preserving code formatting.`;
           }
           
         } catch (parseError) {
-          console.error('Failed to parse Groq response:', parseError);
-          throw new Error('Invalid JSON response from AI');
+          console.error('Failed to parse FastAPI response:', parseError);
+          throw new Error('Invalid response from backend');
         }
+
 
         // Update conversation context
         setConversationContext(currentContext);

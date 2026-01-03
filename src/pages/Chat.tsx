@@ -10,6 +10,7 @@ import VoiceSelector from '../components/chat/VoiceSelector';
 import { useTextToSpeech } from '../hooks/useTexttoSpeech';
 // 🆕 AMNESIA MODE IMPORTS
 import { useAmnesiaMode } from '../hooks/useAmnesiaMode';
+import { useAmnesiaCheck } from '../hooks/useAmnesiaCheck'; 
 import { AmnesiaModeToggle } from '../components/chat/AmnesiaModeToggle';
 import StudyBanner from '../components/chat/StudyBanner';
 import ReconstructionEditor from '../components/chat/ReconstructionEditor';
@@ -31,7 +32,7 @@ const Chat: React.FC = () => {
 
   // 🧠 AMNESIA MODE
   const amnesiaMode = useAmnesiaMode();
-  const [isCheckingMemory, setIsCheckingMemory] = useState(false);
+  const { checkMemory, loading: isCheckingMemory } = useAmnesiaCheck();
   const [memoryCheckResult, setMemoryCheckResult] = useState<any>(null);
 
   // Auto-fill input when voice transcription completes
@@ -62,78 +63,69 @@ const Chat: React.FC = () => {
   };
 
   // 🆕 HANDLE RECONSTRUCTION SUBMISSION
-  // 🆕 HANDLE RECONSTRUCTION SUBMISSION
-  // 🆕 HANDLE RECONSTRUCTION SUBMISSION
-const handleReconstructionSubmit = async (reconstruction: string) => {
-  setIsCheckingMemory(true);
-  
-  try {
-    const userId = auth.currentUser?.uid;
-    if (!userId) {
-      alert('Please log in to use Amnesia Mode');
-      setIsCheckingMemory(false);
-      return;
-    }
-
-    const originalSolution = amnesiaMode.state.originalContent;
-    const problemId = conversationContext.currentTopic || 'unknown';
-
-    console.log('🧠 Calling Firebase function for logic check...');
-
-    // Import Firebase Functions
-    const { getFunctions, httpsCallable, connectFunctionsEmulator } = await import('firebase/functions');
-    const functions = getFunctions();
-
-    // 🔥 CONNECT TO LOCAL EMULATOR (only on localhost)
-    if (window.location.hostname === 'localhost') {
-      connectFunctionsEmulator(functions, '127.0.0.1', 5001);
-      console.log('✅ Connected to Functions emulator');
-    }
-    
-    // Call the callable function
-    const checkMemory = httpsCallable(functions, 'checkMemoryReconstruction');
-    const response = await checkMemory({
-      originalSolution,
-      userReconstruction: reconstruction,
-    });
-
-        const result = response.data as any;
-    console.log('✅ Backend result:', result);
-
-    // Save attempt to Firestore (skip if emulator not running)
+  const handleReconstructionSubmit = async (reconstruction: string) => {
     try {
-      await saveAmnesiaAttempt(userId, {
-        problemId,
+      const userId = auth.currentUser?.uid;
+      if (!userId) {
+        alert('Please log in to use Amnesia Mode');
+        return;
+      }
+
+      const originalSolution = amnesiaMode.state.originalContent;
+      const currentTopic = conversationContext.currentTopic || 'unknown';
+
+      console.log('🧠 Calling FastAPI backend for memory check...');
+
+      // Call FastAPI backend via useAmnesiaCheck hook
+      const result = await checkMemory(
         originalSolution,
-        userReconstruction: reconstruction,
-        logicScore: result.logicScore,
-        passed: result.passed,
-        keyConcepts: result.keyConcepts,
-        missedConcepts: result.missedConcepts,
-        feedback: result.feedback,
+        reconstruction,
+        currentTopic
+      );
+
+      if (!result) {
+        alert('Failed to check your reconstruction. Please try again.');
+        return;
+      }
+
+      console.log('✅ Backend result:', result);
+
+      // Save attempt to Firestore
+      try {
+        await saveAmnesiaAttempt(userId, {
+          problemId: currentTopic,
+          originalSolution,
+          userReconstruction: reconstruction,
+          logicScore: result.logicScore,
+          passed: result.logicScore >= 70, // Consider 70+ as passing
+          keyConcepts: result.keyConcepts,
+          missedConcepts: result.missedConcepts,
+          feedback: result.feedback,
+        });
+
+        // Update stats (streak, average)
+        await updateAmnesiaStats(userId, result.logicScore, result.logicScore >= 70);
+        
+        console.log('✅ Saved to Firestore');
+      } catch (firestoreError) {
+        console.warn('⚠️ Could not save to Firestore:', firestoreError);
+        // Continue anyway - the main feature still works!
+      }
+
+      // Show results
+      setMemoryCheckResult({
+        ...result,
+        passed: result.logicScore >= 70
       });
 
-      // Update stats (streak, average)
-      await updateAmnesiaStats(userId, result.logicScore, result.passed);
-      
-      console.log('✅ Saved to Firestore');
-    } catch (firestoreError) {
-      console.warn('⚠️ Could not save to Firestore (emulator not running):', firestoreError);
-      // Continue anyway - the main feature still works!
+      amnesiaMode.completeReconstruction();
+
+    } catch (error: any) {
+      console.error('❌ Error checking memory:', error);
+      alert(`Failed to check your reconstruction: ${error.message || 'Unknown error'}`);
     }
+  };
 
-    // Show results
-    setMemoryCheckResult(result);
-
-    setIsCheckingMemory(false);
-    amnesiaMode.completeReconstruction();
-
-  } catch (error: any) {
-    console.error('Error checking memory:', error);
-    alert(`Failed to check your reconstruction: ${error.message || 'Unknown error'}`);
-    setIsCheckingMemory(false);
-  }
-};
 
 
 
