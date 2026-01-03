@@ -24,6 +24,8 @@ export interface ChatMessage {
     isHint?: boolean;
     isSolution?: boolean;
     detectedIntent?: string;
+    topic?: string; 
+    isSolutionExplanation?: boolean;
   };
   mode?: 'learning' | 'chat';
 }
