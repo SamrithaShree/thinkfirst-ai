@@ -14,7 +14,7 @@ ThinkFirst AI is a specialized learning chatbot. It detects when you're asking t
 ### Prerequisites
 - Node.js (v18+)
 - Firebase CLI (`npm install -g firebase-tools`)
-- Gemini API Key
+- Groq API Key
 
 ### Local Development
 
@@ -54,14 +54,30 @@ ThinkFirst AI is a specialized learning chatbot. It detects when you're asking t
    ```bash
    firebase deploy --only functions
    ```
-3. **Set Secret:**
-   ```bash
-   firebase functions:secrets:set GEMINI_API_KEY
-   ```
 
 ## Tech Stack
-- **Frontend:** React, TypeScript, Tailwind CSS, Vite
-- **Backend:** Firebase Cloud Functions (TypeScript)
-- **Database:** Firebase Firestore
-- **Auth:** Firebase Auth
-- **AI:** Google Gemini API (`gemini-2.5-flash-lite`)
+
+### Frontend
+- **Framework:** React 18 + TypeScript
+- **Build Tool:** Vite
+- **Styling:** Tailwind CSS
+- **Routing:** React Router v6
+- **State Management:** React Hooks
+- **Authentication:** Firebase Auth (Google Sign-In)
+- **Database:** Cloud Firestore
+- **Real-time APIs:** OpenWeather API, News API
+
+### Backend
+- **Framework:** FastAPI (Python)
+- **AI Model:** Groq API - Llama 3.3 70B
+- **Authentication:** Firebase Admin SDK
+- **Deployment:** Render.com
+- **Cost:** 100% Free Tier
+
+### Features
+- Progressive Learning Mode (hint → solution)
+- Amnesia Mode (memory reconstruction challenges)
+- Voice Input (Web Speech API)
+- Text-to-Speech (5 voice modes)
+- Analytics & Progress Tracking
+- Real-time Weather & News Integration

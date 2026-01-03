@@ -9,8 +9,6 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@google/genai": "^0.13.0",
-    "@google/generative-ai": "^0.24.1",
     "@types/react-syntax-highlighter": "^15.5.13",
     "axios": "^1.13.2",
     "firebase": "^10.8.0",
