@@ -21,12 +21,11 @@ const getDefaultCode = (lang: string) => {
   const [output, setOutput] = useState('');
   const [language, setLanguage] = useState('python');
 
-  // ✅ DYNAMIC BACKEND URL - No hardcoding
+  // ✅ BACKEND URL - Development vs Production
   const getBackendUrl = () => {
     if (import.meta.env.DEV) {
       return 'http://localhost:8000/api/execute';
     }
-    // Production: direct call to Render backend
     const backendUrl = import.meta.env.VITE_BACKEND_URL || 'https://thinkfirst-ai-backend.onrender.com';
     return `${backendUrl}/api/execute`;
   };
