@@ -23,9 +23,12 @@ const getDefaultCode = (lang: string) => {
 
   // ✅ DYNAMIC BACKEND URL - No hardcoding
   const getBackendUrl = () => {
-    if (import.meta.env.DEV) return 'http://localhost:8000/api/execute';
-    if (import.meta.env.PROD) return '/api/execute'; // Production proxy
-    return 'http://localhost:8000/api/execute';
+    if (import.meta.env.DEV) {
+      return 'http://localhost:8000/api/execute';
+    }
+    // Production: direct call to Render backend
+    const backendUrl = import.meta.env.VITE_BACKEND_URL || 'https://thinkfirst-ai-backend.onrender.com';
+    return `${backendUrl}/api/execute`;
   };
 
   const detectCodeQuestion = useCallback((question: string) => {
@@ -41,7 +44,7 @@ const getDefaultCode = (lang: string) => {
     setOutput('Running...');
     try {
       const backendUrl = getBackendUrl();
-      console.log('🚀 Calling:', backendUrl); // Debug
+      console.log('🚀 Calling:', backendUrl); 
       
       const res = await fetch(backendUrl, {
         method: 'POST',

@@ -32,8 +32,8 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",
         "http://localhost:3000",
-        "https://*.web.app",
-        "https://*.firebaseapp.com",
+        "https://think-first-ai.web.app",
+        "https://think-first-ai.firebaseapp.com",
         "*"  # For development - restrict in production
     ],
     allow_credentials=True,
