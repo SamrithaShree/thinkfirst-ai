@@ -9,7 +9,7 @@
     "rewrites": [
       {
         "source": "/api/**",
-        "destination": "http://localhost:8000/api/**"
+        "destination": "https://thinkfirst-ai-backend.onrender.com/api/**"
       },
       {
         "source": "**",
