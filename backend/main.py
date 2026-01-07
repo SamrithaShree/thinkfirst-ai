@@ -22,12 +22,24 @@ logger = logging.getLogger(__name__)
 app = FastAPI()
 
 # CORS configuration
+
+
+ALLOWED_ORIGINS = [
+    "https://think-first-ai.web.app",
+    "https://think-first-ai.firebaseapp.com",
+    "http://localhost:5173",
+    "http://localhost:3000",
+]
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=3600,  
 )
 
 # Initialize Firebase Admin
