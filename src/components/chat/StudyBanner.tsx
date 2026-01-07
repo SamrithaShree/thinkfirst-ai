@@ -15,7 +15,6 @@ const StudyBanner: React.FC<StudyBannerProps> = ({
   onSkip,
   onCancel,
 }) => {
-  // Countdown timer
   useEffect(() => {
     if (timeLeft > 0) {
       const timer = setTimeout(onTimerTick, 1000);

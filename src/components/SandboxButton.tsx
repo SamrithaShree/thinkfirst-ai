@@ -40,7 +40,7 @@ export const SandboxButton: React.FC<SandboxButtonProps> = ({
           </>
         ) : (
           <>
-            💻
+            
             <span>Launch Sandbox</span>
           </>
         )}
