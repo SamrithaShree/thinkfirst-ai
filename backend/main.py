@@ -669,7 +669,7 @@ async def check_memory_endpoint(
 ):
     """
     Amnesia Mode: Compare user reconstruction with original solution
-    Exact logic from Firebase Functions
+    Exact logic from Firebase Functions with improved error handling
     """
     try:
         uid = user["uid"]
@@ -698,7 +698,7 @@ ONLY CHECK THESE (Focus on):
 **Student's Reconstruction:**
 {request.userReconstruction}
 
-Respond with a JSON object:
+Respond ONLY with a valid JSON object (no markdown, no extra text):
 {{
   "logicScore": 85,
   "keyConcepts": ["array traversal", "hash map lookup"],
@@ -712,7 +712,7 @@ Be encouraging but honest. Score 90-100 = excellent, 70-89 = good, 50-69 = parti
             messages=[
                 {
                     "role": "system",
-                    "content": "You are an expert programming educator evaluating student code. Always respond with valid JSON only."
+                    "content": "You are an expert programming educator. Respond ONLY with valid JSON. No markdown code blocks, no explanations, just pure JSON."
                 },
                 {
                     "role": "user",
@@ -724,8 +724,45 @@ Be encouraging but honest. Score 90-100 = excellent, 70-89 = good, 50-69 = parti
             max_tokens=1500
         )
         
-        response_text = completion.choices[0].message.content
-        result = json.loads(response_text)
+        response_text = completion.choices[0].message.content.strip()
+        logger.info(f"Raw Groq response: {response_text[:200]}")
+        
+        # ROBUST JSON PARSING
+        try:
+            # Remove markdown code blocks if present
+            if "```json" in response_text:
+                json_start = response_text.find("```json") + 7
+                json_end = response_text.find("```", json_start)
+                json_str = response_text[json_start:json_end].strip()
+            elif "```" in response_text:
+                json_start = response_text.find("```") + 3
+                json_end = response_text.find("```", json_start)
+                json_str = response_text[json_start:json_end].strip()
+            elif "{" in response_text and "}" in response_text:
+                # Extract JSON object
+                json_start = response_text.find("{")
+                json_end = response_text.rfind("}") + 1
+                json_str = response_text[json_start:json_end]
+            else:
+                raise ValueError("No JSON object found in response")
+            
+            result = json.loads(json_str)
+            
+            # Validate required fields
+            if not all(key in result for key in ["logicScore", "keyConcepts", "missedConcepts", "feedback"]):
+                raise ValueError("Missing required fields in JSON response")
+            
+        except (json.JSONDecodeError, ValueError) as parse_error:
+            logger.error(f"JSON parsing failed: {parse_error}")
+            logger.error(f"Full response text: {response_text}")
+            
+            # FALLBACK: Return safe default
+            result = {
+                "logicScore": 50,
+                "keyConcepts": ["Response parsing error"],
+                "missedConcepts": [],
+                "feedback": "Unable to analyze your solution due to a technical error. Please try again or contact support."
+            }
         
         # Save to Firestore
         try:
@@ -758,17 +795,14 @@ Be encouraging but honest. Score 90-100 = excellent, 70-89 = good, 50-69 = parti
             feedback=result["feedback"]
         )
     
-    except json.JSONDecodeError as e:
-        logger.error(f"JSON parsing error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to parse AI response"
-        )
     except Exception as e:
         logger.error(f"Memory check error: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to check memory: {str(e)}"
+        # Return user-friendly error instead of 500
+        return AmnesiaCheckResponse(
+            logicScore=0,
+            keyConcepts=[],
+            missedConcepts=["System error"],
+            feedback="An error occurred while checking your solution. Please try again."
         )
 
 @app.post("/api/execute", response_model=ExecuteCodeResponse)
