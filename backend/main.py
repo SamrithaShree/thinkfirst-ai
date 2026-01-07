@@ -548,6 +548,68 @@ async def chat_endpoint(
             original_unlocked = time_travel_ctx.unlockedHints.copy()
             time_travel_ctx.unlockedHints = calculate_unlocked_hints(time_travel_ctx)
             logger.info(f"🔓 Hints calculation: {original_unlocked} → {time_travel_ctx.unlockedHints}")
+            
+            # ✅ CHECK IF USER IS ASKING FOR HINT
+            msg_lower = request.message.lower()
+            is_asking_for_hint = any(phrase in msg_lower for phrase in [
+                "give hint", "hint please", "need a hint", "can i get a hint", 
+                "show hint", "give me hint", "hint", "can you give me a hint",
+                "give me a hint", "i need a hint"
+            ])
+            
+            # ✅ IF ASKING FOR HINT BUT IT'S NOT UNLOCKED YET
+            if is_asking_for_hint:
+                max_unlocked = max(time_travel_ctx.unlockedHints) if time_travel_ctx.unlockedHints else 0
+                next_hint = max_unlocked + 1
+                
+                # Hint 1 not unlocked (needs 20 seconds)
+                if next_hint == 1 and elapsed_for_log < 20:
+                    wait_time = 20 - elapsed_for_log
+                    return ChatResponse(
+                        text=f"🤔 **Keep thinking!** Hint 1 will unlock in **{wait_time} seconds**. Try solving it yourself first - you've got this!",
+                        mode="learning",
+                        isHint=False,
+                        isSolution=False,
+                        conversationContext=current_context,
+                        timeTravelContext=time_travel_ctx
+                    )
+                
+                # Hint 2 not unlocked (needs 2 attempts)
+                elif next_hint == 2 and time_travel_ctx.attemptCount < 2:
+                    attempts_needed = 2 - time_travel_ctx.attemptCount
+                    return ChatResponse(
+                        text=f"💪 **Keep trying!** Hint 2 will unlock after **{attempts_needed} more attempt(s)**. Give it another shot!",
+                        mode="learning",
+                        isHint=False,
+                        isSolution=False,
+                        conversationContext=current_context,
+                        timeTravelContext=time_travel_ctx
+                    )
+                
+                # Hint 3 not unlocked (needs 3 attempts)
+                elif next_hint == 3 and time_travel_ctx.attemptCount < 3:
+                    attempts_needed = 3 - time_travel_ctx.attemptCount
+                    return ChatResponse(
+                        text=f"🔥 **Almost there!** Hint 3 will unlock after **{attempts_needed} more attempt(s)**. You're doing great!",
+                        mode="learning",
+                        isHint=False,
+                        isSolution=False,
+                        conversationContext=current_context,
+                        timeTravelContext=time_travel_ctx
+                    )
+                
+                # Solution not unlocked (needs 4 attempts or 3 minutes)
+                elif next_hint == 4 and time_travel_ctx.attemptCount < 4 and elapsed_for_log < 180:
+                    attempts_needed = 4 - time_travel_ctx.attemptCount
+                    time_remaining = 180 - elapsed_for_log
+                    return ChatResponse(
+                        text=f"🎯 **Solution unlocks after {attempts_needed} more attempt(s)** or in **{time_remaining//60}:{time_remaining%60:02d} minutes**. Keep pushing!",
+                        mode="learning",
+                        isHint=False,
+                        isSolution=False,
+                        conversationContext=current_context,
+                        timeTravelContext=time_travel_ctx
+                    )
         
         # Build system prompt
         system_prompt = build_system_prompt(current_context, time_travel_ctx if time_travel_ctx.isActive else None)
