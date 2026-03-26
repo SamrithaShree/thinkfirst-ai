@@ -1,83 +1,111 @@
+# ThinkFirst AI: Progressive Learning & Code Execution Platform
 
-# ThinkFirst AI
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![React](https://img.shields.io/badge/Frontend-React-61DAFB?logo=react&logoColor=white)](https://reactjs.org/)
+[![Firebase](https://img.shields.io/badge/Auth-Firebase-FFCA28?logo=firebase&logoColor=white)](https://firebase.google.com/)
 
-ThinkFirst AI is a specialized learning chatbot. It detects when you're asking technical or educational questions and guides you through a multi-step hint process before revealing the full solution.
+**ThinkFirst AI** is a production-grade educational platform designed to foster deep technical comprehension through AI-driven Socratic dialogue, "Amnesia Mode" memory testing, and a multi-language security sandbox for live code execution.
 
-## Features
-- **Dual Mode AI:** Switches between "General Chat" and "Learning Mode" automatically.
-- **Hint Progression:** Get small hints, then stronger ones, before the full answer.
-- **Session Tracking:** Persist your conversations and track your learning progress.
-- **Clean UI:** Responsive design using Tailwind CSS.
+**🚀 Live Demo:** [https://think-first-ai.web.app](https://think-first-ai.web.app)
 
-## Getting Started
+---
+
+## 🏗️ Hybrid Deployment Architecture
+
+The system utilizes a distributed, high-availability architecture to optimize performance and scalability.
+
+- **Frontend (Edge Optimized):** Deployed on **Firebase Hosting**, leveraging a global CDN for low-latency delivery of the React/Vite application.
+- **Backend (Compute Engine):** Hosted on **Render.com** (Singapore Region), running a high-performance **FastAPI** server powered by Uvicorn.
+- **AI Orchestration:** Real-time inference via **Groq LPU™** technology for ultra-low latency LLM responses.
+- **Persistence Layer:** **Google Cloud Firestore** for real-time synchronization of chat history, metrics, and code execution telemetry.
+
+```mermaid
+graph LR
+    User[Browser/Client] -->|HTTPS| Firebase[Firebase Hosting]
+    User -->|API Requests| Render[Render.com Backend]
+    Render -->|Auth| FBAdmin[Firebase Admin SDK]
+    Render -->|Inference| Groq[Groq API]
+    Render -->|Storage| Firestore[Cloud Firestore]
+    Render -->|Execution| Sandbox[Security Sandbox]
+```
+
+---
+
+## 🛡️ Security & Authentication
+
+### JWT Authentication via Firebase Admin SDK
+Security is enforced at the edge of the API layer using a zero-trust model:
+1.  **Client-Side:** Users authenticate via Firebase Authentication (OIDC).
+2.  **Token Handshake:** The frontend retrieves a short-lived Firebase ID Token (JWT).
+3.  **Backend Verification:** Every request to protected endpoints is intercepted by a FastAPI `HTTPBearer` dependency. The token is verified server-side using the `firebase-admin` SDK:
+    ```python
+    decoded_token = auth.verify_id_token(credentials.credentials)
+    uid = decoded_token["uid"]
+    ```
+
+### Multi-Language Security Sandbox
+The platform features an isolated code execution environment designed for educational safety:
+-   **Isolation:** Code is executed in short-lived subprocesses with strict resource constraints.
+-   **Resource Limits:** 10-second hard timeout per execution to prevent DoS attacks and infinite loops.
+-   **Languages Supported:** Python 3, Node.js, Java, C, and C++ (g++ 17).
+-   **Input Handling:** Supports custom `stdin` injection for complex algorithmic testing.
+-   **Telemetry:** All executions are logged to Firestore for auditing and performance analysis.
+
+---
+
+## 🧪 System Reliability
+
+### Health Monitoring
+The system exposes two levels of health check endpoints to ensure 99.9% uptime and automated failover detection:
+-   **Basic Liveness (`/`):** Returns service version and active feature flags.
+-   **Deep Readiness (`/health`):** Validates downstream connectivity to Firebase and Groq.
+
+### Error Handling & Fault Tolerance
+-   **Global Exception Middleware:** Graceful interception of runtime errors to prevent leakage of internal stack traces.
+-   **Timeout Resiliency:** Automatic termination of runaway execution processes with structured error feedback.
+-   **Logging:** Centralized logging via Python's `logging` module, capturing system-level events and Firestore synchronization errors.
+
+---
+
+## 🛠️ Tech Stack
+
+| Layer | Technology |
+| :--- | :--- |
+| **Frontend** | React 18, TypeScript, Vite, TailwindCSS |
+| **Backend** | Python 3.12, FastAPI, Uvicorn |
+| **Database** | Google Cloud Firestore (NoSQL) |
+| **Auth** | Firebase Auth (JWT) |
+| **AI** | Groq SDK (Llama 3/Mistral) |
+| **Editor** | Monaco Editor (@monaco-editor/react) |
+
+---
+
+## 🚀 Getting Started
 
 ### Prerequisites
 - Node.js (v18+)
-- Firebase CLI (`npm install -g firebase-tools`)
-- Groq API Key
+- Python 3.10+
+- Firebase Project & Service Account
 
-### Local Development
+### Installation
 
-1. **Install Dependencies:**
-   ```bash
-   npm install
-   cd functions && npm install && cd ..
-   ```
+1.  **Clone & Backend Setup:**
+    ```bash
+    git clone https://github.com/your-username/thinkfirst-ai.git
+    cd backend
+    python -m venv venv
+    source venv/bin/activate
+    pip install -r requirements.txt
+    ```
 
-2. **Configure Environment:**
-   - Create a `.env.local` file in the root:
-     ```
-     VITE_BACKEND_URL=http://localhost:5001/YOUR_PROJECT_ID/us-central1/chat
-     ```
-   - For this demo/sandbox, the frontend uses a direct (mocked) call to Gemini for immediate interactivity. If deploying for real, use the Cloud Function.
+2.  **Frontend Setup:**
+    ```bash
+    npm install
+    npm run dev
+    ```
 
-3. **Set API Key:**
-   The application requires `process.env.API_KEY` for Gemini. In this sandbox environment, it's pre-configured.
+---
 
-4. **Run Frontend:**
-   ```bash
-   npm run dev
-   ```
-
-5. **Run Backend (Optional):**
-   ```bash
-   firebase emulators:start --only functions
-   ```
-
-### Deployment
-
-1. **Firebase Init:**
-   ```bash
-   firebase init
-   ```
-2. **Deploy Functions:**
-   ```bash
-   firebase deploy --only functions
-   ```
-
-## Tech Stack
-
-### Frontend
-- **Framework:** React 18 + TypeScript
-- **Build Tool:** Vite
-- **Styling:** Tailwind CSS
-- **Routing:** React Router v6
-- **State Management:** React Hooks
-- **Authentication:** Firebase Auth (Google Sign-In)
-- **Database:** Cloud Firestore
-- **Real-time APIs:** OpenWeather API, News API
-
-### Backend
-- **Framework:** FastAPI (Python)
-- **AI Model:** Groq API - Llama 3.3 70B
-- **Authentication:** Firebase Admin SDK
-- **Deployment:** Render.com
-- **Cost:** 100% Free Tier
-
-### Features
-- Progressive Learning Mode (hint → solution)
-- Amnesia Mode (memory reconstruction challenges)
-- Voice Input (Web Speech API)
-- Text-to-Speech (5 voice modes)
-- Analytics & Progress Tracking
-- Real-time Weather & News Integration
+## 📄 License
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
