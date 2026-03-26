@@ -437,10 +437,10 @@ const Chat: React.FC = () => {
                     {/* Stats Footer */}
                     <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-200">
                       <span className="text-xs text-gray-600">
-                        🧪 Attempts: <span className="font-semibold">{timeTravelData.attemptCount}</span>
+                         Attempts: <span className="font-semibold">{timeTravelData.attemptCount}</span>
                       </span>
                       <span className="text-xs text-gray-600">
-                        🤔 Thinking: <span className="font-semibold">{elapsedTime}s</span>
+                         Thinking: <span className="font-semibold">{elapsedTime}s</span>
                       </span>
                     </div>
                   </div>

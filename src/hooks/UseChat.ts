@@ -117,7 +117,6 @@ function analyzeContext(
     };
   }
   
-  // Phrases that indicate user wants solution directly
   const solutionRequestPhrases = [
     "give me the answer",
     "give the answer",
@@ -308,7 +307,7 @@ function analyzeContext(
   }
   
   if (isFollowUp && previousContext?.currentTopic) {
-    console.log('❓ Detected: Follow-up question (no increment)');
+    console.log('Detected: Follow-up question (no increment)');
     return {
       context: {
         currentTopic: previousContext.currentTopic,
@@ -402,7 +401,6 @@ export const useChat = (sessionId: string) => {
   
   const [topicTracker, setTopicTracker] = useState<TopicTracker>({});
   
-  // Time-Travel Mode State
   const [timeTravelData, setTimeTravelData] = useState<TimeTravelContext>({
     isActive: false,
     questionStartTime: null,
@@ -436,7 +434,6 @@ export const useChat = (sessionId: string) => {
     loadData();
   }, [sessionId]);
 
-  // Real-time timer for Time-Travel Mode
   useEffect(() => {
     if (!timeTravelData.isActive || !timeTravelData.questionStartTime) {
       setElapsedTime(0);
@@ -451,10 +448,9 @@ export const useChat = (sessionId: string) => {
     return () => clearInterval(interval);
   }, [timeTravelData.isActive, timeTravelData.questionStartTime]);
 
-  // Toggle Time-Travel Mode
   const toggleTimeTravel = () => {
     if (!timeTravelData.isActive) {
-      // Turn ON: Start timer
+  
       setTimeTravelData({
         isActive: true,
         questionStartTime: Date.now(),
@@ -462,9 +458,9 @@ export const useChat = (sessionId: string) => {
         unlockedHints: [],
         thinkingTime: 0,
       });
-      console.log('⏰ Time-Travel Mode ACTIVATED');
+      console.log('Time-Travel Mode ACTIVATED');
     } else {
-      // Turn OFF: Reset
+    
       setTimeTravelData({
         isActive: false,
         questionStartTime: null,
@@ -473,7 +469,7 @@ export const useChat = (sessionId: string) => {
         thinkingTime: 0,
       });
       setElapsedTime(0);
-      console.log('⏰ Time-Travel Mode DEACTIVATED');
+      console.log('Time-Travel Mode DEACTIVATED');
     }
   };
 
@@ -482,7 +478,7 @@ export const useChat = (sessionId: string) => {
     setSending(true);
 
     try {
-      // 1. Add user message
+  
       const userMessage: Omit<ChatMessage, 'id'> = {
         role: 'user',
         text: text.trim(),
@@ -494,7 +490,7 @@ export const useChat = (sessionId: string) => {
       const userMessageId = await addMessage(sessionId, userMessage);
       setMessages(prev => [...prev, { ...userMessage, id: userMessageId }]);
 
-      // 2. Analyze context
+  
       const { context: currentContext, updatedTracker } = analyzeContext(
         text,
         messages,
@@ -503,7 +499,6 @@ export const useChat = (sessionId: string) => {
       );
       setTopicTracker(updatedTracker);
 
-      // 3. Prepare Time-Travel Context
       let timeTravelPayload: TimeTravelContext | null = null;
 
       if (timeTravelData.isActive) {
@@ -515,28 +510,28 @@ export const useChat = (sessionId: string) => {
         const followUpPatterns = ['hint', 'complexity', 'explain more', 'what do you mean', 'why', 'how does'];
         const isFollowUp = followUpPatterns.some(pattern => msgLower.includes(pattern));
 
-        // ✅ FIX: Always increment on user attempt in learning mode (not follow-ups)
+
         const shouldIncrement = currentContext.isLearningMode && !isFollowUp && text.trim().length > 5;
         const newAttemptCount = shouldIncrement
           ? timeTravelData.attemptCount + 1 
           : timeTravelData.attemptCount;
 
-        // ✅ Create payload with new values FIRST
+    
         timeTravelPayload = {
           isActive: true,
           questionStartTime: timeTravelData.questionStartTime,
-          attemptCount: newAttemptCount,  // ✅ Use calculated value here
+          attemptCount: newAttemptCount, 
           unlockedHints: timeTravelData.unlockedHints,
           thinkingTime: timeTravelData.thinkingTime
         };
 
-        // ✅ Update state for UI display (happens after response too)
+  
         setTimeTravelData(prev => ({
           ...prev,
           attemptCount: newAttemptCount
         }));
 
-        console.log('🚀 TIME-TRAVEL PAYLOAD:', {
+        console.log('TIME-TRAVEL PAYLOAD:', {
           isActive: timeTravelPayload.isActive,
           elapsed: currentElapsed,
           attemptCount: timeTravelPayload.attemptCount,
@@ -545,7 +540,7 @@ export const useChat = (sessionId: string) => {
         });
       }
 
-      // 4. Real-time data (weather/news)
+
       let realTimeData = '';
       const msgLower = text.toLowerCase();
       
@@ -565,10 +560,10 @@ export const useChat = (sessionId: string) => {
         }
       }
 
-      // 5. Backend request
+
       const idToken = await auth.currentUser!.getIdToken();
 
-      console.log('📤 SENDING TO BACKEND:', {
+      console.log(' SENDING TO BACKEND:', {
         timeTravelContext: timeTravelPayload,  
         conversationContext: currentContext
       });
@@ -586,9 +581,8 @@ export const useChat = (sessionId: string) => {
         }
       });
 
-      console.log('📥 Backend Response:', backendResponse.data);
+      console.log('Backend Response:', backendResponse.data);
 
-      // 6. Parse AI response
       let aiResponse: GroqResponse;
       try {
         aiResponse = {
@@ -598,10 +592,10 @@ export const useChat = (sessionId: string) => {
           isSolution: backendResponse.data.isSolution
         };
 
-        // Safety check
+  
         if (currentContext.isLearningMode && currentContext.attemptCount < 4) {
           if (aiResponse.isSolution === true) {
-            console.warn('⚠️ AI tried to give solution too early!');
+            console.warn('AI tried to give solution too early!');
             aiResponse.isSolution = false;
             aiResponse.isHint = true;
             aiResponse.text = "Let me give you a hint first! " + aiResponse.text.split('.').slice(0, 3).join('.');
@@ -614,35 +608,35 @@ export const useChat = (sessionId: string) => {
 
       setConversationContext(currentContext);
 
-      // 7. Sync Time-Travel state from backend
+
       if (backendResponse.data.timeTravelContext) {
         const backendTT = backendResponse.data.timeTravelContext;
         
-        console.log('🔄 Backend Time-Travel Update:', {
+        console.log('Backend Time-Travel Update:', {
           unlocked: backendTT.unlockedHints,
           attempts: backendTT.attemptCount,
           isActive: backendTT.isActive
         });
 
-        // Check for newly unlocked hints
+  
         const newlyUnlocked = backendTT.unlockedHints.filter(
           (hint: number) => !timeTravelData.unlockedHints.includes(hint)
         );
 
         if (newlyUnlocked.length > 0) {
-          console.log('🎉 NEW HINTS UNLOCKED:', newlyUnlocked);
+          console.log(' NEW HINTS UNLOCKED:', newlyUnlocked);
         }
 
-        // ✅ Update frontend state with backend's calculated values
+
         setTimeTravelData(prev => ({
           ...prev,
-          unlockedHints: backendTT.unlockedHints,  // ✅ Use backend's calculation
-          attemptCount: backendTT.attemptCount,     // ✅ Sync attempt count
-          isActive: backendTT.isActive              // ✅ Maintain active state
+          unlockedHints: backendTT.unlockedHints,  
+          attemptCount: backendTT.attemptCount,     
+          isActive: backendTT.isActive             
         }));
       }
 
-      // Analytics tracking
+  
       const topic = currentContext.currentTopic || 'unknown-topic';
       const attempt = currentContext.attemptCount ?? 0;
 
@@ -662,7 +656,6 @@ export const useChat = (sessionId: string) => {
         trackModeSwitched(aiResponse.mode);
       }
 
-      // Add AI message
       const aiMessage: Omit<ChatMessage, 'id'> = {
         role: 'ai',
         text: aiResponse.text,
@@ -680,12 +673,12 @@ export const useChat = (sessionId: string) => {
       const aiMessageId = await addMessage(sessionId, aiMessage);
       setMessages(prev => [...prev, { ...aiMessage, id: aiMessageId }]);
 
-      // Update session
+
       const newMode = aiResponse.mode === 'chat' ? 'chat' : 'learning';
       await updateSession(sessionId, { mode: newMode });
       setSession(prev => prev ? { ...prev, mode: newMode } : null);
 
-      // Progress tracking
+  
       if (aiResponse.isHint) {
         await incrementProgress(auth.currentUser.uid, 'hintsUsed');
       }

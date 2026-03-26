@@ -18,18 +18,15 @@ import time
 
 load_dotenv()
 
-# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize FastAPI
 app = FastAPI(
     title="ThinkFirst AI Backend",
     version="2.0.0",
     description="Educational AI with Progressive Learning, Amnesia Mode, Time-Travel Hints & Code Execution"
 )
 
-# CORS Configuration
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -43,10 +40,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Security
 security = HTTPBearer()
 
-# Initialize Firebase Admin
 try:
     if os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON"):
         service_account_info = json.loads(os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON"))
@@ -56,19 +51,17 @@ try:
     
     firebase_admin.initialize_app(cred)
     db = firestore.client()
-    logger.info("✅ Firebase Admin SDK initialized successfully")
+    logger.info("Firebase Admin SDK initialized successfully")
 except Exception as e:
-    logger.error(f"❌ Firebase initialization error: {e}")
+    logger.error(f" Firebase initialization error: {e}")
     raise
 
-# Initialize Groq Client
 groq_api_key = os.getenv("GROQ_API_KEY")
 if not groq_api_key:
     raise ValueError("GROQ_API_KEY environment variable is required")
 
 groq_client = Groq(api_key=groq_api_key)
 
-# ==================== PYDANTIC MODELS ====================
 
 class ConversationMessage(BaseModel):
     role: str
@@ -124,8 +117,6 @@ class ExecuteCodeResponse(BaseModel):
     language: str
     success: bool
 
-# ==================== FIREBASE AUTH VERIFICATION ====================
-
 async def verify_firebase_token(
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ) -> dict:
@@ -150,7 +141,6 @@ async def verify_firebase_token(
             detail=f"Authentication failed: {str(e)}"
         )
 
-# ==================== CONTEXT ANALYSIS ====================
 
 def analyze_context(
     message: str,
@@ -163,7 +153,6 @@ def analyze_context(
     """
     msg_lower = message.lower().strip()
     
-    # PRIORITY CHECK: REAL-TIME DATA REQUESTS
     weather_patterns = ["weather", "temperature", "how hot", "how cold", "climate", "forecast"]
     news_patterns = ["news", "today's news", "latest news", "current events", "headlines"]
     
@@ -171,14 +160,13 @@ def analyze_context(
     is_news_request = any(p in msg_lower for p in news_patterns)
     
     if is_weather_request or is_news_request:
-        logger.info('🌐 Real-time data request detected - staying in chat mode')
+        logger.info(' Real-time data request detected - staying in chat mode')
         return ConversationContext(
             currentTopic=None,
             attemptCount=0,
             isLearningMode=False
         )
-    
-    # Solution request phrases
+  
     solution_request_phrases = [
         "give me the answer", "give the answer", "just give me",
         "give me solution", "give the solution", "show me the answer",
@@ -187,25 +175,22 @@ def analyze_context(
     ]
     is_asking_for_solution = any(phrase in msg_lower for phrase in solution_request_phrases)
     
-    # Genuine attempt phrases
     attempt_phrases = [
         "i tried", "i think", "maybe", "is it", "would it be",
         "should i", "idk", "i don't know", "not sure", "i'm stuck", "can't figure"
     ]
     is_genuine_attempt = any(phrase in msg_lower for phrase in attempt_phrases)
     
-    # Back to previous topic
+
     back_to_previous_phrases = ["back to", "return to", "again about", "still don't get"]
     is_returning_to_previous = any(phrase in msg_lower for phrase in back_to_previous_phrases)
-    
-    # New learning question
+
     learning_keywords = [
         "how do i", "how to", "how about", "what about",
         "explain", "solve", "algorithm for", "solution for", "implement"
     ]
     is_new_learning_question = any(kw in msg_lower for kw in learning_keywords)
     
-    # Follow-up questions (don't increment attempt)
     follow_up_keywords = [
         "time complexity", "space complexity", "complexity",
         "why does this", "why is", "can you explain more",
@@ -213,38 +198,32 @@ def analyze_context(
         "give hint", "another hint"
     ]
     is_follow_up = any(kw in msg_lower for kw in follow_up_keywords)
-    
-    # General chat
+
     chat_keywords = ["hello", "hi", "hey", "thanks", "thank you", "okay", "ok", "got it", "cool"]
     is_general_chat = any(
         msg_lower == kw or msg_lower.startswith(f"{kw} ") or msg_lower.startswith(f"{kw}!")
         for kw in chat_keywords
     )
     
-    # Extract topic helper
     def extract_topic(msg: str) -> str:
         words = msg.lower().split()
         stop_words = ["how", "to", "the", "a", "an", "what", "is", "explain", "can", "you", "i", "do", "about", "for"]
         meaningful = [w for w in words if w not in stop_words and len(w) > 3]
         return " ".join(meaningful[:3])
     
-    # DECISION LOGIC
-    # 1. General chat - reset everything
     if is_general_chat and not is_new_learning_question:
-        logger.info('💬 Detected: General chat')
+        logger.info('Detected: General chat')
         return ConversationContext(currentTopic=None, attemptCount=0, isLearningMode=False)
-    
-    # 2. New learning question - reset topic and attempts
+
     if is_new_learning_question and not is_returning_to_previous:
         new_topic = extract_topic(message)
-        logger.info(f'📚 Detected: New learning question - {new_topic}')
+        logger.info(f' Detected: New learning question - {new_topic}')
         return ConversationContext(
             currentTopic=new_topic,
             attemptCount=0,
             isLearningMode=True
         )
     
-    # 3. Returning to previous topic
     if is_returning_to_previous and conversation_history:
         previous_topics = [
             extract_topic(msg.text)
@@ -258,56 +237,51 @@ def analyze_context(
                 (topic for topic in previous_topics if topic.split()[0] in msg_lower),
                 previous_topics[-2] if len(previous_topics) > 1 else previous_topics[-1]
             )
-            logger.info(f'🔄 Detected: Returning to previous topic - {relevant_topic}')
+            logger.info(f'Detected: Returning to previous topic - {relevant_topic}')
             return ConversationContext(
                 currentTopic=relevant_topic,
                 attemptCount=0,
                 isLearningMode=True
             )
-    
-    # 4. Follow-up question - SAME topic, SAME attempt count
+
     if is_follow_up and previous_context and previous_context.currentTopic:
-        logger.info('❓ Detected: Follow-up question (no increment)')
+        logger.info(' Detected: Follow-up question (no increment)')
         return ConversationContext(
             currentTopic=previous_context.currentTopic,
             attemptCount=previous_context.attemptCount,
             isLearningMode=True
         )
-    
-    # 5. Direct solution request - jump to solution
+
     if is_asking_for_solution and previous_context and previous_context.isLearningMode:
-        logger.info('🎯 Detected: Direct solution request')
+        logger.info(' Detected: Direct solution request')
         return ConversationContext(
             currentTopic=previous_context.currentTopic,
             attemptCount=max(previous_context.attemptCount, 3),
             isLearningMode=True
         )
     
-    # 6. Genuine attempt - increment
     if is_genuine_attempt and previous_context and previous_context.isLearningMode and previous_context.currentTopic:
-        logger.info('✍️ Detected: Genuine attempt (increment)')
+        logger.info(' Detected: Genuine attempt (increment)')
         return ConversationContext(
             currentTopic=previous_context.currentTopic,
             attemptCount=previous_context.attemptCount + 1,
             isLearningMode=True
         )
-    
-    # 7. Substantive response - increment
+
     if (previous_context and previous_context.isLearningMode and
         previous_context.currentTopic and not is_follow_up and
         not is_asking_for_solution and len(message) > 10):
-        logger.info('📝 Detected: Substantive response (increment)')
+        logger.info(' Detected: Substantive response (increment)')
         return ConversationContext(
             currentTopic=previous_context.currentTopic,
             attemptCount=previous_context.attemptCount + 1,
             isLearningMode=True
         )
     
-    # 8. Default: maintain context
-    logger.info('🔄 Maintaining previous context')
+
+    logger.info(' Maintaining previous context')
     return previous_context or ConversationContext(currentTopic=None, attemptCount=0, isLearningMode=False)
 
-# ==================== TIME-TRAVEL HINTS CALCULATION ====================
 
 def calculate_unlocked_hints(time_travel_ctx: TimeTravelContext) -> List[int]:
     """
@@ -341,7 +315,6 @@ def calculate_unlocked_hints(time_travel_ctx: TimeTravelContext) -> List[int]:
     logger.info(f"⏰ Time-Travel: {elapsed}s, {attempts} attempts → Unlocked: {unlocked}")
     return unlocked
 
-# ==================== SYSTEM PROMPT BUILDER ====================
 
 def build_system_prompt(context: ConversationContext, time_travel_ctx: Optional[TimeTravelContext] = None) -> str:
     """Build progressive system prompt based on context"""
@@ -398,7 +371,6 @@ FOR LEARNING QUESTIONS:
         
         base_prompt += "\n\nIMPORTANT: If user asks a follow-up about complexity/clarification, answer directly without treating it as a new attempt."
     
-    # TIME-TRAVEL MODE (supersedes learning mode)
     if time_travel_ctx and time_travel_ctx.isActive:
         elapsed = 0
         if time_travel_ctx.questionStartTime:
@@ -418,10 +390,10 @@ Unlocked hints: {unlocked}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 CRITICAL TIME-TRAVEL RULES:
-✅ You can ONLY provide hints in the unlocked list: {unlocked}
-✅ Give the HIGHEST unlocked hint level available
-✅ If a hint level is not unlocked, you CANNOT give it yet
-❌ Do NOT jump ahead to unlocked hint levels that aren't unlocked
+ You can ONLY provide hints in the unlocked list: {unlocked}
+ Give the HIGHEST unlocked hint level available
+ If a hint level is not unlocked, you CANNOT give it yet
+ Do NOT jump ahead to unlocked hint levels that aren't unlocked
 
 HINT LEVEL DEFINITIONS:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -480,7 +452,7 @@ REQUIRED JSON RESPONSE FORMAT:
     
     return base_prompt
 
-# ==================== API ENDPOINTS ====================
+
 
 @app.get("/")
 async def root():
@@ -521,35 +493,31 @@ async def chat_endpoint(
     """
     try:
         uid = user["uid"]
-        logger.info(f"📥 Chat request from user: {uid}")
-        
-        # Analyze conversation context
+        logger.info(f" Chat request from user: {uid}")
+      
         current_context = analyze_context(
             request.message,
             request.conversationHistory,
             request.conversationContext
         )
         
-        logger.info(f"📊 Context Analysis: {current_context.dict()}")
-        
-        # Create time_travel_ctx
+        logger.info(f"Context Analysis: {current_context.dict()}")
+   
         time_travel_ctx = request.timeTravelContext or TimeTravelContext()
-        
-        # Calculate elapsed for logging
+
         elapsed_for_log = 0
         if time_travel_ctx.questionStartTime:
             current_time_ms = int(time.time() * 1000)
             elapsed_for_log = (current_time_ms - time_travel_ctx.questionStartTime) // 1000
         
-        logger.info(f"🔥 Time-Travel data: active={time_travel_ctx.isActive}, elapsed={elapsed_for_log}s, attempts={time_travel_ctx.attemptCount}")
-        
-        # Calculate unlocked hints
+        logger.info(f" Time-Travel data: active={time_travel_ctx.isActive}, elapsed={elapsed_for_log}s, attempts={time_travel_ctx.attemptCount}")
+  
         if time_travel_ctx.isActive:
             original_unlocked = time_travel_ctx.unlockedHints.copy()
             time_travel_ctx.unlockedHints = calculate_unlocked_hints(time_travel_ctx)
             logger.info(f"🔓 Hints calculation: {original_unlocked} → {time_travel_ctx.unlockedHints}")
             
-            # ✅ CHECK IF USER IS ASKING FOR HINT
+        
             msg_lower = request.message.lower()
             is_asking_for_hint = any(phrase in msg_lower for phrase in [
                 "give hint", "hint please", "need a hint", "can i get a hint", 
@@ -557,16 +525,16 @@ async def chat_endpoint(
                 "give me a hint", "i need a hint"
             ])
             
-            # ✅ IF ASKING FOR HINT BUT IT'S NOT UNLOCKED YET
+    
             if is_asking_for_hint:
                 max_unlocked = max(time_travel_ctx.unlockedHints) if time_travel_ctx.unlockedHints else 0
                 next_hint = max_unlocked + 1
                 
-                # Hint 1 not unlocked (needs 20 seconds)
+        
                 if next_hint == 1 and elapsed_for_log < 20:
                     wait_time = 20 - elapsed_for_log
                     return ChatResponse(
-                        text=f"🤔 **Keep thinking!** Hint 1 will unlock in **{wait_time} seconds**. Try solving it yourself first - you've got this!",
+                        text=f"**Keep thinking!** Hint 1 will unlock in **{wait_time} seconds**. Try solving it yourself first - you've got this!",
                         mode="learning",
                         isHint=False,
                         isSolution=False,
@@ -574,11 +542,11 @@ async def chat_endpoint(
                         timeTravelContext=time_travel_ctx
                     )
                 
-                # Hint 2 not unlocked (needs 2 attempts)
+    
                 elif next_hint == 2 and time_travel_ctx.attemptCount < 2:
                     attempts_needed = 2 - time_travel_ctx.attemptCount
                     return ChatResponse(
-                        text=f"💪 **Keep trying!** Hint 2 will unlock after **{attempts_needed} more attempt(s)**. Give it another shot!",
+                        text=f" **Keep trying!** Hint 2 will unlock after **{attempts_needed} more attempt(s)**. Give it another shot!",
                         mode="learning",
                         isHint=False,
                         isSolution=False,
@@ -586,11 +554,10 @@ async def chat_endpoint(
                         timeTravelContext=time_travel_ctx
                     )
                 
-                # Hint 3 not unlocked (needs 3 attempts)
                 elif next_hint == 3 and time_travel_ctx.attemptCount < 3:
                     attempts_needed = 3 - time_travel_ctx.attemptCount
                     return ChatResponse(
-                        text=f"🔥 **Almost there!** Hint 3 will unlock after **{attempts_needed} more attempt(s)**. You're doing great!",
+                        text=f" **Almost there!** Hint 3 will unlock after **{attempts_needed} more attempt(s)**. You're doing great!",
                         mode="learning",
                         isHint=False,
                         isSolution=False,
@@ -598,12 +565,12 @@ async def chat_endpoint(
                         timeTravelContext=time_travel_ctx
                     )
                 
-                # Solution not unlocked (needs 4 attempts or 3 minutes)
+            
                 elif next_hint == 4 and time_travel_ctx.attemptCount < 4 and elapsed_for_log < 180:
                     attempts_needed = 4 - time_travel_ctx.attemptCount
                     time_remaining = 180 - elapsed_for_log
                     return ChatResponse(
-                        text=f"🎯 **Solution unlocks after {attempts_needed} more attempt(s)** or in **{time_remaining//60}:{time_remaining%60:02d} minutes**. Keep pushing!",
+                        text=f" **Solution unlocks after {attempts_needed} more attempt(s)** or in **{time_remaining//60}:{time_remaining%60:02d} minutes**. Keep pushing!",
                         mode="learning",
                         isHint=False,
                         isSolution=False,
@@ -611,10 +578,10 @@ async def chat_endpoint(
                         timeTravelContext=time_travel_ctx
                     )
         
-        # Build system prompt
+  
         system_prompt = build_system_prompt(current_context, time_travel_ctx if time_travel_ctx.isActive else None)
         
-        # Build conversation history for Groq
+
         groq_messages = [{"role": "system", "content": system_prompt}]
         
         for msg in request.conversationHistory[-10:]:
@@ -628,7 +595,6 @@ async def chat_endpoint(
             "content": f"{request.message}\n\n[Please respond in JSON format with fields: text, mode, isHint, isSolution]"
         })
         
-        # Call Groq API
         logger.info(f"Calling Groq API with {len(groq_messages)} messages")
         
         completion = groq_client.chat.completions.create(
@@ -642,7 +608,6 @@ async def chat_endpoint(
         response_text = completion.choices[0].message.content
         logger.info(f"Groq response: {response_text[:100]}...")
         
-        # Parse JSON response
         try:
             if "```json" in response_text:
                 json_start = response_text.find("```json") + 7
@@ -671,7 +636,7 @@ async def chat_endpoint(
                 "isSolution": False
             }
         
-        # Save to Firestore
+
         if request.sessionId:
             try:
                 session_ref = db.collection("sessions").document(request.sessionId)
@@ -706,7 +671,7 @@ async def chat_endpoint(
             except Exception as firestore_error:
                 logger.error(f"Firestore error: {firestore_error}")
         
-        logger.info(f"📤 Returning to frontend: unlocked={time_travel_ctx.unlockedHints}, active={time_travel_ctx.isActive}")
+        logger.info(f" Returning to frontend: unlocked={time_travel_ctx.unlockedHints}, active={time_travel_ctx.isActive}")
         
         return ChatResponse(
             text=response_data.get("text", response_text),
@@ -735,7 +700,7 @@ async def check_memory_endpoint(
     """
     try:
         uid = user["uid"]
-        logger.info(f"🧠 Memory check request from user: {uid}")
+        logger.info(f" Memory check request from user: {uid}")
         
         comparison_prompt = f"""You are a learning assessment AI. Compare these two solutions and check if the LOGIC and APPROACH are similar.
 
@@ -789,9 +754,7 @@ Be encouraging but honest. Score 90-100 = excellent, 70-89 = good, 50-69 = parti
         response_text = completion.choices[0].message.content.strip()
         logger.info(f"Raw Groq response: {response_text[:200]}")
         
-        # ROBUST JSON PARSING
         try:
-            # Remove markdown code blocks if present
             if "```json" in response_text:
                 json_start = response_text.find("```json") + 7
                 json_end = response_text.find("```", json_start)
@@ -801,7 +764,7 @@ Be encouraging but honest. Score 90-100 = excellent, 70-89 = good, 50-69 = parti
                 json_end = response_text.find("```", json_start)
                 json_str = response_text[json_start:json_end].strip()
             elif "{" in response_text and "}" in response_text:
-                # Extract JSON object
+    
                 json_start = response_text.find("{")
                 json_end = response_text.rfind("}") + 1
                 json_str = response_text[json_start:json_end]
@@ -810,7 +773,7 @@ Be encouraging but honest. Score 90-100 = excellent, 70-89 = good, 50-69 = parti
             
             result = json.loads(json_str)
             
-            # Validate required fields
+        
             if not all(key in result for key in ["logicScore", "keyConcepts", "missedConcepts", "feedback"]):
                 raise ValueError("Missing required fields in JSON response")
             
@@ -818,15 +781,14 @@ Be encouraging but honest. Score 90-100 = excellent, 70-89 = good, 50-69 = parti
             logger.error(f"JSON parsing failed: {parse_error}")
             logger.error(f"Full response text: {response_text}")
             
-            # FALLBACK: Return safe default
+
             result = {
                 "logicScore": 50,
                 "keyConcepts": ["Response parsing error"],
                 "missedConcepts": [],
                 "feedback": "Unable to analyze your solution due to a technical error. Please try again or contact support."
             }
-        
-        # Save to Firestore
+
         try:
             db.collection("amnesiaAttempts").add({
                 "userId": uid,
@@ -859,7 +821,7 @@ Be encouraging but honest. Score 90-100 = excellent, 70-89 = good, 50-69 = parti
     
     except Exception as e:
         logger.error(f"Memory check error: {str(e)}")
-        # Return user-friendly error instead of 500
+      
         return AmnesiaCheckResponse(
             logicScore=0,
             keyConcepts=[],
@@ -885,8 +847,7 @@ async def execute_code(
         output = ""
         error_msg = None
         success = False
-        
-        # PYTHON EXECUTION
+      
         if request.language.lower() in ["python", "py"]:
             filepath = f"exec_tmp/{temp_id}.py"
             
@@ -909,7 +870,7 @@ async def execute_code(
             error_msg = result.stderr if result.returncode != 0 else None
             success = result.returncode == 0
         
-        # JAVASCRIPT EXECUTION
+
         elif request.language.lower() in ["javascript", "js", "node"]:
             filepath = f"exec_tmp/{temp_id}.js"
             
@@ -930,7 +891,6 @@ async def execute_code(
             error_msg = result.stderr if result.returncode != 0 else None
             success = result.returncode == 0
         
-        # JAVA EXECUTION
         elif request.language.lower() == "java":
             filepath = f"exec_tmp/{temp_id}.java"
             
@@ -961,7 +921,7 @@ async def execute_code(
             else:
                 error_msg = f"Compilation Error:\n{compile_result.stderr}"
         
-        # C++ EXECUTION
+  
         elif request.language.lower() in ["cpp", "c++"]:
             filepath = f"exec_tmp/{temp_id}.cpp"
             out_path = f"exec_tmp/{temp_id}_out"
@@ -989,8 +949,7 @@ async def execute_code(
                 success = result.returncode == 0
             else:
                 error_msg = f"Compilation Error:\n{compile_result.stderr}"
-        
-        # C EXECUTION
+   
         elif request.language.lower() == "c":
             filepath = f"exec_tmp/{temp_id}.c"
             out_path = f"exec_tmp/{temp_id}_out"
@@ -1021,8 +980,7 @@ async def execute_code(
         
         else:
             error_msg = f"Unsupported language: {request.language}"
-        
-        # Cleanup temp files
+      
         for ext in ['.py', '.js', '.java', '.cpp', '.c', '_out', '.class', '_input.txt']:
             try:
                 os.remove(f"exec_tmp/{temp_id}{ext}")
@@ -1031,7 +989,7 @@ async def execute_code(
         
         execution_time = round(time.time() - start_time, 3)
         
-        # Log execution to Firestore
+
         try:
             db.collection("codeExecutions").add({
                 "userId": uid,
@@ -1069,7 +1027,6 @@ async def execute_code(
             detail=f"Code execution failed: {str(e)}"
         )
 
-# ==================== RUN ====================
 
 if __name__ == "__main__":
     import uvicorn
